@@ -55,13 +55,36 @@ class ElexonClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
+    # async def _get(self, path: str, params: Dict[str, Any]) -> Any:
+    #     url = f"{self.BASE_URL}{path}"
+    #     params["format"] = "json"
+    #     logger.info("GET %s params=%s", url, params)
+    #     response = await self._get_client().get(url, params=params)
+    #     response.raise_for_status()
+    #     return response.json()
+
+
+
+    
     async def _get(self, path: str, params: Dict[str, Any]) -> Any:
         url = f"{self.BASE_URL}{path}"
         params["format"] = "json"
+
         logger.info("GET %s params=%s", url, params)
+
         response = await self._get_client().get(url, params=params)
+
+        if response.is_error:
+            logger.error(
+                "Elexon API error: status=%s url=%s response=%s",
+                response.status_code,
+                response.url,
+                response.text[:2000],
+            )
+
         response.raise_for_status()
         return response.json()
+
 
     async def get_wind_actuals(
         self, from_date: str, to_date: str
