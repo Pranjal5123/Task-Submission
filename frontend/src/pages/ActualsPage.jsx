@@ -63,7 +63,7 @@ export default function ActualsPage() {
               <div className="chart-header">
                 <div>
                   <div className="chart-title">Wind Generation — Half-hourly Actuals</div>
-                  <div className="chart-subtitle">{from} to {to} · {records.length} periods</div>
+                  <div className="chart-subtitle">{fmtIso(from)} to {fmtIso(to)} · {records.length} periods</div>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={340}>
@@ -148,4 +148,8 @@ export default function ActualsPage() {
 
 function formatDt(dt) {
   try { return format(parseISO(dt), 'dd MMM yyyy HH:mm') } catch { return dt }
+}
+
+function fmtIso(iso) {
+  try { return format(parseISO(iso), 'dd MMM yyyy') } catch { return iso }
 }

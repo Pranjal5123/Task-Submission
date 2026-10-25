@@ -380,8 +380,63 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 12px;
   color: var(--clr-text-muted);
   font-weight: 500;
+  white-space: nowrap;
 }
 
+/* Wrapper that shows our pretty display text but holds a hidden real date input */
+.date-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--clr-surface-2);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px 7px 12px;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 118px;
+}
+
+.date-input-wrapper:hover,
+.date-input-wrapper:focus-within {
+  border-color: var(--clr-accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.date-display-text {
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--clr-text);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  user-select: none;
+  flex: 1;
+}
+
+.date-cal-icon {
+  color: var(--clr-text-muted);
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* The real <input type="date"> sits on top invisibly — it only shows the picker */
+.date-input-hidden {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-size: 0; /* prevent any text from leaking through */
+}
+
+/* Legacy plain date-input (fallback) */
 .date-input {
   background: var(--clr-surface-2);
   border: 1px solid var(--clr-border);

@@ -86,7 +86,7 @@ export default function ForecastsPage() {
             label="Avg Forecast Generation"
             value={avgForecast}
             unit="MW"
-            sub="Jan 2026 DA average"
+            sub={`${fmtRange(from, to)} average`}
             accentColor="linear-gradient(90deg,#f59e0b,#f43f5e)"
           />
         </div>
@@ -239,4 +239,14 @@ export default function ForecastsPage() {
 
 function formatDt(dt) {
   try { return format(parseISO(dt), 'dd MMM yyyy HH:mm') } catch { return dt }
+}
+
+function fmtRange(from, to) {
+  try {
+    const f = parseISO(from)
+    const t = parseISO(to)
+    return `${format(f, 'MMM yyyy')} – ${format(t, 'MMM yyyy')}`
+  } catch {
+    return `${from} to ${to}`
+  }
 }

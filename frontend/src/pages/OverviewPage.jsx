@@ -53,7 +53,7 @@ export default function OverviewPage() {
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700 }}>🌬️ Wind Generation Overview</h1>
             <p style={{ fontSize: 13, color: 'var(--clr-text-muted)', marginTop: 2 }}>
-              UK National Wind — Day-ahead Forecast vs Actual Generation · January 2026
+              UK National Wind — Day-ahead Forecast vs Actual Generation · {fmtRange(from, to)}
             </p>
           </div>
           <DateRangePicker
@@ -127,7 +127,7 @@ export default function OverviewPage() {
                 <div>
                   <div className="chart-title">Actual vs Day-Ahead Forecast Wind Generation</div>
                   <div className="chart-subtitle">
-                    30-minute resolution · {from} to {to} · MW
+                    30-minute resolution · {fmtIso(from)} to {fmtIso(to)} · MW
                   </div>
                 </div>
                 <div className="chart-legend">
@@ -256,6 +256,22 @@ export default function OverviewPage() {
 }
 
 // ---- Helpers ----
+
+/** Format YYYY-MM-DD as 'dd MMM yyyy' for display */
+function fmtIso(iso) {
+  try { return format(parseISO(iso), 'dd MMM yyyy') } catch { return iso }
+}
+
+/** Human-readable range label, e.g. "Jan–Dec 2025" or "Jun 2025 – Jan 2026" */
+function fmtRange(from, to) {
+  try {
+    const f = parseISO(from)
+    const t = parseISO(to)
+    return `${format(f, 'MMM yyyy')} – ${format(t, 'MMM yyyy')}`
+  } catch {
+    return `${from} to ${to}`
+  }
+}
 
 function buildChartData(actuals = [], forecasts = []) {
   const map = {}
