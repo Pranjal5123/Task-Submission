@@ -67,7 +67,7 @@ export default function OverviewPage() {
 
       <div className="page-body">
         {/* Info Banner */}
-        <div className="info-banner">
+        {/* <div className="info-banner">
           <Zap size={16} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
             <strong>Day-ahead procurement context:</strong> For each delivery half-hour in the
@@ -76,7 +76,7 @@ export default function OverviewPage() {
             by Elexon BMRS. The gap between total demand and wind generation indicates the
             thermal/import procurement volume required.
           </span>
-        </div>
+        </div> */}
 
         {/* KPI Cards */}
         <div className="kpi-grid">

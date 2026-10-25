@@ -63,12 +63,12 @@ export default function AccuracyPage() {
       </div>
 
       <div className="page-body">
-        <div className="info-banner">
+        {/* <div className="info-banner">
           📐 <strong>Methodology:</strong> For each delivery period, the best available forecast
           published before gate closure (D-1 11:00 UTC) is paired with the actual generation.
           Positive bias indicates systematic over-forecasting (trader would under-procure thermal);
           negative bias means under-forecasting (trader over-procures). All errors expressed in MW.
-        </div>
+        </div> */}
 
         {/* Summary KPIs */}
         <div className="kpi-grid">

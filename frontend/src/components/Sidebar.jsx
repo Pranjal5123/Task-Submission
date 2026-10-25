@@ -79,7 +79,7 @@ export default function Sidebar({ activePage, onNavigate }) {
           Elexon BMRS Live Data
         </div>
         <div style={{ fontSize: 10, color: 'var(--clr-text-faint)', marginTop: 6 }}>
-          FUELHH · WINDFOR · Jan 2026
+          FUELHH · WINDFOR · 
         </div>
       </div>
     </aside>

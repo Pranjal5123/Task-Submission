@@ -54,11 +54,11 @@ export default function ForecastsPage() {
       </div>
 
       <div className="page-body">
-        <div className="info-banner">
+        {/* <div className="info-banner">
           📌 <strong>Day-ahead selection logic:</strong> For each delivery half-hour, the forecast shown
           is the most recent vintage published before gate closure (D-1 11:00 UTC) — exactly what a
           trader would use when placing bids in the UK day-ahead electricity market.
-        </div>
+        </div> */}
 
         {/* KPIs */}
         <div className="kpi-grid">
