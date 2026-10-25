@@ -1,6 +1,15 @@
-"""Elexon BMRS API client with retry logic and caching."""
+"""Elexon BMRS API client with retry logic and caching.
+
+Correct parameter names (confirmed against live API):
+  FUELHH  : settlementDateFrom / settlementDateTo
+  WINDFOR : publishDateTimeFrom / publishDateTimeTo  (stream endpoint)
+
+Using the wrong names (`from` / `to`) causes the API to silently ignore the
+filter and return the most recently available data instead.
+"""
 
 import logging
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -57,7 +66,11 @@ class ElexonClient:
     async def get_wind_actuals(
         self, from_date: str, to_date: str
     ) -> List[Dict[str, Any]]:
-        """Fetch actual wind generation half-hourly data (FUELHH)."""
+        """Fetch actual wind generation half-hourly data (FUELHH).
+
+        Correct Elexon API parameters:
+          settlementDateFrom / settlementDateTo  (YYYY-MM-DD)
+        """
         cache_key = f"actuals:{from_date}:{to_date}"
         cached = await cache_manager.get(cache_key)
         if cached is not None:
@@ -65,18 +78,46 @@ class ElexonClient:
             return cached
 
         data = await self._get(
-            "/datasets/FUELHH/stream",
-            {"fuelType": "WIND", "from": from_date, "to": to_date},
+            "/datasets/FUELHH",
+            {
+                "settlementDateFrom": from_date,
+                "settlementDateTo": to_date,
+                "fuelType": "WIND",
+            },
         )
-        # Normalise: keep only WIND records (API should filter but be defensive)
-        records = [r for r in data if r.get("fuelType", "").upper() == "WIND"]
+
+        # The non-stream endpoint wraps records in a `data` key
+        records_raw = data if isinstance(data, list) else data.get("data", [])
+
+        # Defensive: keep only WIND records and normalise field names
+        records = []
+        for r in records_raw:
+            if r.get("fuelType", "").upper() != "WIND":
+                continue
+            # Ensure startTime is present (derive from settlementDate + period if missing)
+            if "startTime" not in r and "settlementDate" in r:
+                period = r.get("settlementPeriod", 1)
+                minutes = (period - 1) * 30
+                sd = r["settlementDate"]
+                r["startTime"] = f"{sd}T{minutes // 60:02d}:{minutes % 60:02d}:00Z"
+            records.append(r)
+
         await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
         return records
 
     async def get_wind_forecasts(
         self, from_date: str, to_date: str
     ) -> List[Dict[str, Any]]:
-        """Fetch wind generation forecasts (WINDFOR).
+        """Fetch wind generation forecasts (WINDFOR) for a delivery date range.
+
+        Strategy: the WINDFOR /stream endpoint filters by *publishDateTime*.
+        To retrieve all forecast vintages whose *delivery period* (startTime)
+        falls within [from_date, to_date] we set:
+          publishDateTimeFrom = from_date - 2 days (gives pre-gate-closure forecasts)
+          publishDateTimeTo   = to_date   + 1 day  (inclusive upper bound)
+
+        We then filter server-side to keep only records whose startTime falls
+        within the requested delivery window.
 
         The WINDFOR dataset contains multiple forecast vintages (publishTime)
         for each target startTime. We return all records so the caller can
@@ -88,12 +129,40 @@ class ElexonClient:
             logger.debug("Cache HIT for %s", cache_key)
             return cached
 
+        # Expand the publish window to cover pre-gate-closure vintages
+        pub_from = (
+            date.fromisoformat(from_date) - timedelta(days=2)
+        ).isoformat() + "T00:00:00Z"
+        pub_to = (
+            date.fromisoformat(to_date) + timedelta(days=1)
+        ).isoformat() + "T23:59:59Z"
+
         data = await self._get(
             "/datasets/WINDFOR/stream",
-            {"from": from_date, "to": to_date},
+            {
+                "publishDateTimeFrom": pub_from,
+                "publishDateTimeTo": pub_to,
+            },
         )
-        await cache_manager.set(cache_key, data, ttl=settings.CACHE_TTL_SECONDS)
-        return data
+
+        records_raw = data if isinstance(data, list) else data.get("data", [])
+
+        # Filter: keep only records whose delivery period (startTime) is within
+        # the requested from_date .. to_date window (inclusive).
+        from_prefix = from_date        # "YYYY-MM-DD" — startTime starts with this
+        to_prefix   = to_date          # "YYYY-MM-DD"
+        records = [
+            r for r in records_raw
+            if r.get("startTime") and from_prefix <= r["startTime"][:10] <= to_prefix
+        ]
+
+        logger.info(
+            "WINDFOR: raw=%d, filtered_to_delivery_window=%d (from=%s to=%s)",
+            len(records_raw), len(records), from_date, to_date,
+        )
+
+        await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
+        return records
 
 
 # Singleton instance reused across requests
