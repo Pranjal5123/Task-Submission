@@ -38,13 +38,13 @@ async def get_actuals(
         default=None,
         alias="from",
         description="Start date (YYYY-MM-DD). Defaults to 30 days ago.",
-        examples=["2026-01-01"],
+        examples=["YYYY-MM-DD"],
     ),
     to_date: Optional[str] = Query(
         default=None,
         alias="to",
         description="End date (YYYY-MM-DD). Defaults to today.",
-        examples=["2026-01-31"],
+        examples=["YYYY-MM-DD"],
     ),
 ):
     # Apply dynamic defaults if caller omits dates

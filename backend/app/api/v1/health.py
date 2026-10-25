@@ -1,6 +1,7 @@
 """Health check endpoint."""
 
 import logging
+from datetime import date, timedelta
 
 import httpx
 from fastapi import APIRouter
@@ -16,11 +17,18 @@ router = APIRouter()
 async def health_check():
     """Returns API liveness status and Elexon API reachability."""
     reachable = False
+    # Use yesterday as a minimal probe — no hardcoded dates
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(
-                f"{settings.ELEXON_BASE_URL}/datasets/FUELHH/stream",
-                params={"fuelType": "WIND", "from": "2026-01-01", "to": "2026-01-01", "format": "json"},
+                f"{settings.ELEXON_BASE_URL}/datasets/FUELHH",
+                params={
+                    "settlementDateFrom": yesterday,
+                    "settlementDateTo": yesterday,
+                    "fuelType": "WIND",
+                    "format": "json",
+                },
             )
             reachable = resp.status_code == 200
     except Exception as exc:
