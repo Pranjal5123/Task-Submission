@@ -1,13 +1,297 @@
-"""Elexon BMRS API client with retry logic and caching.
+# """Elexon BMRS API client with retry logic and caching.
 
-Correct parameter names (confirmed against live API):
-  FUELHH  : settlementDateFrom / settlementDateTo  (NO fuelType param – filter locally)
-  WINDFOR : publishDateTimeFrom / publishDateTimeTo  (stream endpoint)
+# Correct parameter names (confirmed against live API):
+#   FUELHH  : settlementDateFrom / settlementDateTo  (NO fuelType param – filter locally)
+#   WINDFOR : publishDateTimeFrom / publishDateTimeTo  (stream endpoint)
 
-IMPORTANT: The /datasets/FUELHH endpoint does NOT accept a `fuelType` query
-parameter. Passing it causes a 400 Bad Request. All fuel-type filtering must
-be done client-side after receiving the full response.
-"""
+# IMPORTANT: The /datasets/FUELHH endpoint does NOT accept a `fuelType` query
+# parameter. Passing it causes a 400 Bad Request. All fuel-type filtering must
+# be done client-side after receiving the full response.
+# """
+
+# import logging
+# from datetime import date, timedelta
+# from typing import Any, Dict, List, Optional
+
+# import httpx
+# from tenacity import (
+#     retry,
+#     retry_if_exception_type,
+#     stop_after_attempt,
+#     wait_exponential,
+# )
+
+# from app.core.config import settings
+# from app.core.cache import cache_manager
+
+# logger = logging.getLogger(__name__)
+
+
+# class ElexonClient:
+#     """Async client for the Elexon BMRS data API."""
+
+#     BASE_URL = settings.ELEXON_BASE_URL
+
+#     def __init__(self) -> None:
+#         self._client: Optional[httpx.AsyncClient] = None
+
+#     def _get_client(self) -> httpx.AsyncClient:
+#         if self._client is None or self._client.is_closed:
+#             self._client = httpx.AsyncClient(
+#                 timeout=settings.HTTP_TIMEOUT,
+#                 headers={
+#                     "Accept": "application/json",
+#                     "User-Agent": "WindPowerIntelligencePlatform/1.0",
+#                 },
+#             )
+#         return self._client
+
+#     async def close(self) -> None:
+#         if self._client and not self._client.is_closed:
+#             await self._client.aclose()
+
+#     @retry(
+#         retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+#         stop=stop_after_attempt(settings.HTTP_MAX_RETRIES),
+#         wait=wait_exponential(multiplier=1, min=2, max=10),
+#         reraise=True,
+#     )
+#     async def _get(self, path: str, params: Dict[str, Any]) -> Any:
+#         """Make an authenticated GET request with automatic retry on transient errors."""
+#         url = f"{self.BASE_URL}{path}"
+#         params["format"] = "json"
+
+#         logger.info("GET %s params=%s", url, params)
+
+#         response = await self._get_client().get(url, params=params)
+
+#         if response.is_error:
+#             logger.error(
+#                 "Elexon API error: status=%s url=%s response=%s",
+#                 response.status_code,
+#                 response.url,
+#                 response.text[:2000],
+#             )
+
+#         response.raise_for_status()
+#         return response.json()
+
+
+#     # async def get_wind_actuals(
+#     #     self, from_date: str, to_date: str
+#     # ) -> List[Dict[str, Any]]:
+
+
+#     async def get_wind_actuals(
+#         self, from_date: str, to_date: str
+#     ) -> List[Dict[str, Any]]:
+#         """Fetch actual wind generation in chunks of at most 7 days."""
+
+#         cache_key = f"actuals:{from_date}:{to_date}"
+#         cached = await cache_manager.get(cache_key)
+
+#         if cached is not None:
+#             logger.debug("Cache HIT for %s", cache_key)
+#             return cached
+
+#         start_date = date.fromisoformat(from_date)
+#         end_date = date.fromisoformat(to_date)
+
+#         if start_date > end_date:
+#             raise ValueError("Start date must not be after end date")
+
+#         records = []
+#         current_date = start_date
+
+#         while current_date <= end_date:
+#             # FUELHH allows a maximum inclusive range of 7 days.
+#             chunk_end = min(
+#                 current_date + timedelta(days=6),
+#                 end_date,
+#             )
+
+#             logger.info(
+#                 "Fetching FUELHH actuals: %s to %s",
+#                 current_date.isoformat(),
+#                 chunk_end.isoformat(),
+#             )
+
+#             data = await self._get(
+#                 "/datasets/FUELHH",
+#                 {
+#                     "settlementDateFrom": current_date.isoformat(),
+#                     "settlementDateTo": chunk_end.isoformat(),
+#                 },
+#             )
+
+#             records_raw = (
+#                 data if isinstance(data, list)
+#                 else data.get("data", [])
+#             )
+
+#             for r in records_raw:
+#                 if r.get("fuelType", "").upper() != "WIND":
+#                     continue
+
+#                 if "startTime" not in r and "settlementDate" in r:
+#                     period = int(r.get("settlementPeriod", 1))
+#                     minutes = (period - 1) * 30
+#                     sd = r["settlementDate"]
+
+#                     r["startTime"] = (
+#                         f"{sd}T{minutes // 60:02d}:"
+#                         f"{minutes % 60:02d}:00Z"
+#                     )
+
+#                 records.append(r)
+
+#             # Continue from the next day without overlapping requests.
+#             current_date = chunk_end + timedelta(days=1)
+
+#         # Sort all chunks together by delivery time.
+#         records.sort(key=lambda r: r.get("startTime", ""))
+
+#         logger.info(
+#             "FUELHH complete: %d wind records from %s to %s",
+#             len(records),
+#             from_date,
+#             to_date,
+#         )
+
+#         await cache_manager.set(
+#             cache_key,
+#             records,
+#             ttl=settings.CACHE_TTL_SECONDS,
+#         )
+
+#         return records
+
+
+
+
+#         """Fetch actual wind generation half-hourly data (FUELHH).
+
+#         NOTE: The /datasets/FUELHH endpoint does NOT support a `fuelType` query
+#         parameter. Sending it causes a 400 Bad Request from the Elexon API.
+#         We fetch all fuel types and filter to WIND locally.
+
+#         Correct Elexon API parameters:
+#           settlementDateFrom / settlementDateTo  (YYYY-MM-DD)
+#         """
+#         cache_key = f"actuals:{from_date}:{to_date}"
+#         cached = await cache_manager.get(cache_key)
+#         if cached is not None:
+#             logger.debug("Cache HIT for %s", cache_key)
+#             return cached
+
+#         # Do NOT pass fuelType here — /datasets/FUELHH rejects it with HTTP 400.
+#         # WIND filtering is performed below in application code.
+#         data = await self._get(
+#             "/datasets/FUELHH",
+#             {
+#                 "settlementDateFrom": from_date,
+#                 "settlementDateTo": to_date,
+#             },
+#         )
+
+#         # The non-stream endpoint wraps records in a `data` key
+#         records_raw = data if isinstance(data, list) else data.get("data", [])
+
+#         logger.info(
+#             "FUELHH: raw=%d records received (from=%s to=%s)",
+#             len(records_raw), from_date, to_date,
+#         )
+
+#         # Filter to WIND only and normalise field names
+#         records = []
+#         for r in records_raw:
+#             if r.get("fuelType", "").upper() != "WIND":
+#                 continue
+#             # Ensure startTime is present (derive from settlementDate + period if missing)
+#             if "startTime" not in r and "settlementDate" in r:
+#                 period = r.get("settlementPeriod", 1)
+#                 minutes = (period - 1) * 30
+#                 sd = r["settlementDate"]
+#                 r["startTime"] = f"{sd}T{minutes // 60:02d}:{minutes % 60:02d}:00Z"
+#             records.append(r)
+
+#         logger.info(
+#             "FUELHH: %d WIND records after filtering (from=%s to=%s)",
+#             len(records), from_date, to_date,
+#         )
+
+#         await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
+#         return records
+
+#     async def get_wind_forecasts(
+#         self, from_date: str, to_date: str
+#     ) -> List[Dict[str, Any]]:
+#         """Fetch wind generation forecasts (WINDFOR) for a delivery date range.
+
+#         Strategy: the WINDFOR /stream endpoint filters by *publishDateTime*.
+#         To retrieve all forecast vintages whose *delivery period* (startTime)
+#         falls within [from_date, to_date] we set:
+#           publishDateTimeFrom = from_date - 2 days (gives pre-gate-closure forecasts)
+#           publishDateTimeTo   = to_date   + 1 day  (inclusive upper bound)
+
+#         We then filter server-side to keep only records whose startTime falls
+#         within the requested delivery window.
+
+#         The WINDFOR dataset contains multiple forecast vintages (publishTime)
+#         for each target startTime. We return all records so the caller can
+#         select the appropriate day-ahead vintage.
+#         """
+#         cache_key = f"forecasts:{from_date}:{to_date}"
+#         cached = await cache_manager.get(cache_key)
+#         if cached is not None:
+#             logger.debug("Cache HIT for %s", cache_key)
+#             return cached
+
+#         # Expand the publish window to cover pre-gate-closure vintages
+#         pub_from = (
+#             date.fromisoformat(from_date) - timedelta(days=2)
+#         ).isoformat() + "T00:00:00Z"
+#         pub_to = (
+#             date.fromisoformat(to_date) + timedelta(days=1)
+#         ).isoformat() + "T23:59:59Z"
+
+#         data = await self._get(
+#             "/datasets/WINDFOR/stream",
+#             {
+#                 "publishDateTimeFrom": pub_from,
+#                 "publishDateTimeTo": pub_to,
+#             },
+#         )
+
+#         records_raw = data if isinstance(data, list) else data.get("data", [])
+
+#         # Filter: keep only records whose delivery period (startTime) is within
+#         # the requested from_date .. to_date window (inclusive).
+#         from_prefix = from_date        # "YYYY-MM-DD" — startTime starts with this
+#         to_prefix   = to_date          # "YYYY-MM-DD"
+#         records = [
+#             r for r in records_raw
+#             if r.get("startTime") and from_prefix <= r["startTime"][:10] <= to_prefix
+#         ]
+
+#         logger.info(
+#             "WINDFOR: raw=%d, filtered_to_delivery_window=%d (from=%s to=%s)",
+#             len(records_raw), len(records), from_date, to_date,
+#         )
+
+#         await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
+#         return records
+
+
+# # Singleton instance reused across requests
+# elexon_client = ElexonClient()
+
+
+
+
+
+
+"""Elexon BMRS API client with retry logic and caching."""
 
 import logging
 from datetime import date, timedelta
@@ -51,19 +335,31 @@ class ElexonClient:
             await self._client.aclose()
 
     @retry(
-        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+        retry=retry_if_exception_type(
+            (httpx.HTTPError, httpx.TimeoutException)
+        ),
         stop=stop_after_attempt(settings.HTTP_MAX_RETRIES),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    async def _get(self, path: str, params: Dict[str, Any]) -> Any:
-        """Make an authenticated GET request with automatic retry on transient errors."""
+    async def _get(
+        self, path: str, params: Dict[str, Any]
+    ) -> Any:
+        """Make a GET request and log upstream errors."""
+
         url = f"{self.BASE_URL}{path}"
-        params["format"] = "json"
+        request_params = {**params, "format": "json"}
 
-        logger.info("GET %s params=%s", url, params)
+        logger.info(
+            "GET %s params=%s",
+            url,
+            request_params,
+        )
 
-        response = await self._get_client().get(url, params=params)
+        response = await self._get_client().get(
+            url,
+            params=request_params,
+        )
 
         if response.is_error:
             logger.error(
@@ -76,16 +372,15 @@ class ElexonClient:
         response.raise_for_status()
         return response.json()
 
-
-    # async def get_wind_actuals(
-    #     self, from_date: str, to_date: str
-    # ) -> List[Dict[str, Any]]:
-
-
     async def get_wind_actuals(
         self, from_date: str, to_date: str
     ) -> List[Dict[str, Any]]:
-        """Fetch actual wind generation in chunks of at most 7 days."""
+        """
+        Fetch actual wind generation from FUELHH.
+
+        Elexon limits the inclusive settlement date range to 7 days
+        per request, so longer ranges are fetched in separate chunks.
+        """
 
         cache_key = f"actuals:{from_date}:{to_date}"
         cached = await cache_manager.get(cache_key)
@@ -98,61 +393,159 @@ class ElexonClient:
         end_date = date.fromisoformat(to_date)
 
         if start_date > end_date:
-            raise ValueError("Start date must not be after end date")
+            raise ValueError(
+                "Start date must not be after end date"
+            )
 
-        records = []
+        records: List[Dict[str, Any]] = []
         current_date = start_date
 
         while current_date <= end_date:
-            # FUELHH allows a maximum inclusive range of 7 days.
+            # Seven inclusive days maximum per FUELHH request.
             chunk_end = min(
                 current_date + timedelta(days=6),
                 end_date,
             )
 
+            chunk_from = current_date.isoformat()
+            chunk_to = chunk_end.isoformat()
+
             logger.info(
                 "Fetching FUELHH actuals: %s to %s",
-                current_date.isoformat(),
-                chunk_end.isoformat(),
+                chunk_from,
+                chunk_to,
             )
 
             data = await self._get(
                 "/datasets/FUELHH",
                 {
-                    "settlementDateFrom": current_date.isoformat(),
-                    "settlementDateTo": chunk_end.isoformat(),
+                    "settlementDateFrom": chunk_from,
+                    "settlementDateTo": chunk_to,
                 },
             )
 
             records_raw = (
-                data if isinstance(data, list)
+                data
+                if isinstance(data, list)
                 else data.get("data", [])
             )
 
-            for r in records_raw:
-                if r.get("fuelType", "").upper() != "WIND":
+            logger.info(
+                "FUELHH chunk returned %d records (%s to %s)",
+                len(records_raw),
+                chunk_from,
+                chunk_to,
+            )
+
+            for record in records_raw:
+                # FUELHH responses are expected to contain fuelType.
+                if (
+                    str(record.get("fuelType", "")).upper()
+                    != "WIND"
+                ):
                     continue
 
-                if "startTime" not in r and "settlementDate" in r:
-                    period = int(r.get("settlementPeriod", 1))
+                # Derive startTime if it is missing.
+                if (
+                    "startTime" not in record
+                    and "settlementDate" in record
+                ):
+                    period = int(
+                        record.get("settlementPeriod", 1)
+                    )
                     minutes = (period - 1) * 30
-                    sd = r["settlementDate"]
+                    settlement_date = record["settlementDate"]
 
-                    r["startTime"] = (
-                        f"{sd}T{minutes // 60:02d}:"
+                    record["startTime"] = (
+                        f"{settlement_date}T"
+                        f"{minutes // 60:02d}:"
                         f"{minutes % 60:02d}:00Z"
                     )
 
-                records.append(r)
+                records.append(record)
 
-            # Continue from the next day without overlapping requests.
+            # The next request starts the day after this chunk ends.
             current_date = chunk_end + timedelta(days=1)
 
-        # Sort all chunks together by delivery time.
-        records.sort(key=lambda r: r.get("startTime", ""))
+        # Sort all records chronologically.
+        records.sort(
+            key=lambda record: record.get("startTime", "")
+        )
 
         logger.info(
-            "FUELHH complete: %d wind records from %s to %s",
+            "FUELHH complete: %d WIND records from %s to %s",
+            len(records),
+            from_date,
+            to_date,
+        )
+
+        await cache_manager.set(
+            cache_key,
+            records,
+            ttl=settings.CACHE_TTL_SECONDS,
+        )
+
+        return records
+
+    async def get_wind_forecasts(
+        self, from_date: str, to_date: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch wind forecasts from WINDFOR.
+
+        WINDFOR stream filters by publishDateTime, so the publication
+        window is expanded to include earlier forecast vintages.
+        Results are then filtered by delivery startTime.
+        """
+
+        cache_key = f"forecasts:{from_date}:{to_date}"
+        cached = await cache_manager.get(cache_key)
+
+        if cached is not None:
+            logger.debug("Cache HIT for %s", cache_key)
+            return cached
+
+        start_date = date.fromisoformat(from_date)
+        end_date = date.fromisoformat(to_date)
+
+        if start_date > end_date:
+            raise ValueError(
+                "Start date must not be after end date"
+            )
+
+        pub_from = (
+            start_date - timedelta(days=2)
+        ).isoformat() + "T00:00:00Z"
+
+        pub_to = (
+            end_date + timedelta(days=1)
+        ).isoformat() + "T23:59:59Z"
+
+        data = await self._get(
+            "/datasets/WINDFOR/stream",
+            {
+                "publishDateTimeFrom": pub_from,
+                "publishDateTimeTo": pub_to,
+            },
+        )
+
+        records_raw = (
+            data
+            if isinstance(data, list)
+            else data.get("data", [])
+        )
+
+        # Keep records whose delivery date is in the selected range.
+        records = [
+            record
+            for record in records_raw
+            if record.get("startTime")
+            and from_date <= record["startTime"][:10] <= to_date
+        ]
+
+        logger.info(
+            "WINDFOR: raw=%d, filtered=%d (from=%s to=%s)",
+            len(records_raw),
             len(records),
             from_date,
             to_date,
@@ -167,121 +560,5 @@ class ElexonClient:
         return records
 
 
-
-
-        """Fetch actual wind generation half-hourly data (FUELHH).
-
-        NOTE: The /datasets/FUELHH endpoint does NOT support a `fuelType` query
-        parameter. Sending it causes a 400 Bad Request from the Elexon API.
-        We fetch all fuel types and filter to WIND locally.
-
-        Correct Elexon API parameters:
-          settlementDateFrom / settlementDateTo  (YYYY-MM-DD)
-        """
-        cache_key = f"actuals:{from_date}:{to_date}"
-        cached = await cache_manager.get(cache_key)
-        if cached is not None:
-            logger.debug("Cache HIT for %s", cache_key)
-            return cached
-
-        # Do NOT pass fuelType here — /datasets/FUELHH rejects it with HTTP 400.
-        # WIND filtering is performed below in application code.
-        data = await self._get(
-            "/datasets/FUELHH",
-            {
-                "settlementDateFrom": from_date,
-                "settlementDateTo": to_date,
-            },
-        )
-
-        # The non-stream endpoint wraps records in a `data` key
-        records_raw = data if isinstance(data, list) else data.get("data", [])
-
-        logger.info(
-            "FUELHH: raw=%d records received (from=%s to=%s)",
-            len(records_raw), from_date, to_date,
-        )
-
-        # Filter to WIND only and normalise field names
-        records = []
-        for r in records_raw:
-            if r.get("fuelType", "").upper() != "WIND":
-                continue
-            # Ensure startTime is present (derive from settlementDate + period if missing)
-            if "startTime" not in r and "settlementDate" in r:
-                period = r.get("settlementPeriod", 1)
-                minutes = (period - 1) * 30
-                sd = r["settlementDate"]
-                r["startTime"] = f"{sd}T{minutes // 60:02d}:{minutes % 60:02d}:00Z"
-            records.append(r)
-
-        logger.info(
-            "FUELHH: %d WIND records after filtering (from=%s to=%s)",
-            len(records), from_date, to_date,
-        )
-
-        await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
-        return records
-
-    async def get_wind_forecasts(
-        self, from_date: str, to_date: str
-    ) -> List[Dict[str, Any]]:
-        """Fetch wind generation forecasts (WINDFOR) for a delivery date range.
-
-        Strategy: the WINDFOR /stream endpoint filters by *publishDateTime*.
-        To retrieve all forecast vintages whose *delivery period* (startTime)
-        falls within [from_date, to_date] we set:
-          publishDateTimeFrom = from_date - 2 days (gives pre-gate-closure forecasts)
-          publishDateTimeTo   = to_date   + 1 day  (inclusive upper bound)
-
-        We then filter server-side to keep only records whose startTime falls
-        within the requested delivery window.
-
-        The WINDFOR dataset contains multiple forecast vintages (publishTime)
-        for each target startTime. We return all records so the caller can
-        select the appropriate day-ahead vintage.
-        """
-        cache_key = f"forecasts:{from_date}:{to_date}"
-        cached = await cache_manager.get(cache_key)
-        if cached is not None:
-            logger.debug("Cache HIT for %s", cache_key)
-            return cached
-
-        # Expand the publish window to cover pre-gate-closure vintages
-        pub_from = (
-            date.fromisoformat(from_date) - timedelta(days=2)
-        ).isoformat() + "T00:00:00Z"
-        pub_to = (
-            date.fromisoformat(to_date) + timedelta(days=1)
-        ).isoformat() + "T23:59:59Z"
-
-        data = await self._get(
-            "/datasets/WINDFOR/stream",
-            {
-                "publishDateTimeFrom": pub_from,
-                "publishDateTimeTo": pub_to,
-            },
-        )
-
-        records_raw = data if isinstance(data, list) else data.get("data", [])
-
-        # Filter: keep only records whose delivery period (startTime) is within
-        # the requested from_date .. to_date window (inclusive).
-        from_prefix = from_date        # "YYYY-MM-DD" — startTime starts with this
-        to_prefix   = to_date          # "YYYY-MM-DD"
-        records = [
-            r for r in records_raw
-            if r.get("startTime") and from_prefix <= r["startTime"][:10] <= to_prefix
-        ]
-
-        logger.info(
-            "WINDFOR: raw=%d, filtered_to_delivery_window=%d (from=%s to=%s)",
-            len(records_raw), len(records), from_date, to_date,
-        )
-
-        await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
-        return records
-
-
-# Singleton instance reused across requests
+# Singleton instance reused across requests.
 elexon_client = ElexonClient()
