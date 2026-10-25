@@ -10,11 +10,13 @@
 
 ## 🌐 Live Application
 
-| Service  | URL |
-|----------|-----|
-| Frontend | `https://<your-vercel-app>.vercel.app` |
-| Backend API | `https://<your-render-app>.onrender.com` |
-| API Docs | `https://<your-render-app>.onrender.com/api/docs` |
+| Service | URL |
+|---------|-----|
+| Frontend | [https://windiq.vercel.app](https://windiq.vercel.app) |
+| Backend API | [https://windiq-backend.onrender.com](https://windiq-backend.onrender.com) |
+| API Docs | [https://windiq-backend.onrender.com/api/docs](https://windiq-backend.onrender.com/api/docs) |
+
+> ⚠️ **Note:** Backend is hosted on Render free tier — it may take 30–60 seconds to wake up on first request.
 
 ---
 
@@ -26,7 +28,6 @@
 │   ├── app/
 │   │   ├── api/
 │   │   │   └── v1/
-│   │   │       ├── __init__.py
 │   │   │       ├── actuals.py      # GET /api/v1/actuals — FUELHH wind actuals
 │   │   │       ├── forecasts.py    # GET /api/v1/forecasts — WINDFOR snapshot & DA selection
 │   │   │       ├── metrics.py      # GET /api/v1/metrics  — MAE, RMSE, MAPE, Bias
@@ -36,10 +37,11 @@
 │   │   │   └── cache.py            # In-memory TTL cache
 │   │   ├── schemas/
 │   │   │   └── responses.py        # Pydantic response models
-│   │   ├── services/
-│   │   │   ├── elexon_client.py    # Async BMRS API client with retry
-│   │   │   └── analytics.py        # Core accuracy computation logic
-│   │   └── __init__.py
+│   │   └── services/
+│   │       ├── elexon_client.py    # Async BMRS API client with retry
+│   │       └── analytics.py        # Core accuracy computation logic
+│   ├── tests/
+│   │   └── test_analytics.py       # Unit tests for analytics service
 │   ├── main.py                     # FastAPI app entry point
 │   ├── requirements.txt            # Pinned Python dependencies
 │   ├── Dockerfile                  # Backend container (non-root, health-checked)
@@ -68,9 +70,11 @@
 │   ├── vite.config.js              # Vite config with dev proxy
 │   ├── nginx.conf                  # nginx SPA + API proxy config
 │   ├── Dockerfile                  # Multi-stage build (Node builder + nginx)
+│   ├── vercel.json                 # Vercel SPA routing config
 │   └── .env.example                # Frontend env template
 │
 ├── docker-compose.yml              # Compose: backend + frontend + network
+├── render.yaml                     # Render deployment config (backend)
 ├── .gitignore
 └── README.md
 ```
@@ -90,8 +94,8 @@ cd <repo>
 docker compose up --build
 
 # Access the app
-open http://localhost       # Frontend
-open http://localhost:8000/api/docs  # API Swagger docs
+# Frontend:  http://localhost
+# API docs:  http://localhost:8000/api/docs
 ```
 
 ### Option 2: Local Development (without Docker)
@@ -103,19 +107,20 @@ cd backend
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Copy and configure environment
-cp .env.example .env
+copy .env.example .env
 
 # Start the API server
 uvicorn main:app --reload --port 8000
 ```
 
-Backend available at: `http://localhost:8000`
+Backend available at: `http://localhost:8000`  
 API docs at: `http://localhost:8000/api/docs`
 
 #### Frontend
@@ -127,8 +132,8 @@ cd frontend
 npm install
 
 # Copy and configure environment
-cp .env.example .env.local
-# Set: VITE_API_URL=http://localhost:8000/api/v1
+copy .env.example .env.local
+# Edit .env.local: VITE_API_URL=http://localhost:8000/api/v1
 
 # Start Vite dev server
 npm run dev
@@ -194,9 +199,9 @@ Full interactive docs: `/api/docs` (Swagger UI)
 
 | Metric | Formula | Interpretation |
 |--------|---------|----------------|
-| **MAE** | mean(|forecast − actual|) | Average absolute error in MW |
+| **MAE** | mean(\|forecast − actual\|) | Average absolute error in MW |
 | **RMSE** | √mean((forecast − actual)²) | Penalises large errors more; in MW |
-| **MAPE** | mean(|error|/|actual|) × 100 | Scale-independent; % |
+| **MAPE** | mean(\|error\|/\|actual\|) × 100 | Scale-independent; % |
 | **Bias** | mean(forecast − actual) | Positive = systematic over-forecast |
 
 ---
@@ -209,14 +214,15 @@ Full interactive docs: `/api/docs` (Swagger UI)
 2. Connect to this GitHub repo, set **Root directory** to `backend/`
 3. Runtime: **Python 3.12**; Build command: `pip install -r requirements.txt`
 4. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables from `backend/.env.example`
+5. Add environment variable: `CORS_ORIGINS=["https://your-frontend.vercel.app","http://localhost:5173"]`
+6. Health check path: `/api/v1/health`
 
 ### Frontend → Vercel
 
 1. Import the repo on [vercel.com](https://vercel.com)
 2. Set **Root directory** to `frontend/`
 3. Build command: `npm run build`; Output directory: `dist`
-4. Set environment variable: `VITE_API_URL=https://<your-render-backend>.onrender.com/api/v1`
+4. Set environment variable: `VITE_API_URL=https://your-render-backend.onrender.com/api/v1`
 
 ---
 
