@@ -1,16 +1,26 @@
 """Actual wind generation endpoint (FUELHH dataset)."""
 
 import logging
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.core.config import settings
 from app.schemas.responses import ActualsResponse, ActualRecord
 from app.services.elexon_client import elexon_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _default_from() -> str:
+    """30 days ago as YYYY-MM-DD — computed fresh per request."""
+    return (date.today() - timedelta(days=30)).isoformat()
+
+
+def _default_to() -> str:
+    """Today as YYYY-MM-DD — computed fresh per request."""
+    return date.today().isoformat()
 
 
 @router.get(
@@ -20,23 +30,27 @@ router = APIRouter()
     description=(
         "Returns half-hourly (30-min) actual wind generation data from the "
         "Elexon BMRS FUELHH dataset filtered to WIND fuel type. "
-        "Defaults to January 2026."
+        "Defaults to the last 30 days if no date range is supplied."
     ),
 )
 async def get_actuals(
     from_date: Optional[str] = Query(
-        default=settings.DATA_START_DATE,
+        default=None,
         alias="from",
-        description="Start date (YYYY-MM-DD). Inclusive.",
+        description="Start date (YYYY-MM-DD). Defaults to 30 days ago.",
         examples=["2026-01-01"],
     ),
     to_date: Optional[str] = Query(
-        default=settings.DATA_END_DATE,
+        default=None,
         alias="to",
-        description="End date (YYYY-MM-DD). Inclusive.",
+        description="End date (YYYY-MM-DD). Defaults to today.",
         examples=["2026-01-31"],
     ),
 ):
+    # Apply dynamic defaults if caller omits dates
+    from_date = from_date or _default_from()
+    to_date = to_date or _default_to()
+
     try:
         raw = await elexon_client.get_wind_actuals(from_date, to_date)
     except Exception as exc:

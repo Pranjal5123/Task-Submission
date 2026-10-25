@@ -3,6 +3,7 @@
  * The most technically rich page for the interviewer demo.
  */
 import { useState } from 'react'
+import { defaultFrom, defaultTo } from '../utils/dateDefaults'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -26,8 +27,8 @@ import DateRangePicker from '../components/DateRangePicker'
 import KpiCard from '../components/KpiCard'
 
 export default function AccuracyPage() {
-  const [from, setFrom] = useState('2026-01-01')
-  const [to, setTo] = useState('2026-01-31')
+  const [from, setFrom] = useState(defaultFrom)
+  const [to, setTo] = useState(defaultTo)
 
   const { data, isLoading, error } = useMetrics(from, to)
 

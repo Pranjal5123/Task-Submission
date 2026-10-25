@@ -1,6 +1,9 @@
-"""Application configuration using Pydantic Settings."""
+"""Application configuration using Pydantic Settings.
 
-import os
+No hardcoded date defaults — dates are always required from the caller
+or computed dynamically at request time.
+"""
+
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,10 +25,6 @@ class Settings(BaseSettings):
 
     # Cache (in-memory TTL in seconds)
     CACHE_TTL_SECONDS: int = 300  # 5 minutes
-
-    # Data scope
-    DATA_START_DATE: str = "2026-01-01"
-    DATA_END_DATE: str = "2026-01-31"
 
     # HTTP client
     HTTP_TIMEOUT: int = 60

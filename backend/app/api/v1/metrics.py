@@ -1,11 +1,11 @@
 """Forecast accuracy metrics endpoint."""
 
 import logging
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.core.config import settings
 from app.schemas.responses import AccuracyMetricsResponse
 from app.services.elexon_client import elexon_client
 from app.services.analytics import (
@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _default_from() -> str:
+    return (date.today() - timedelta(days=30)).isoformat()
+
+
+def _default_to() -> str:
+    return date.today().isoformat()
+
+
 @router.get(
     "/metrics",
     response_model=AccuracyMetricsResponse,
@@ -27,23 +35,24 @@ router = APIRouter()
         "Computes MAE, RMSE, MAPE, and Bias by comparing day-ahead wind "
         "generation forecasts against actual generation readings. "
         "Forecast selection uses gate-closure logic (D-1 11:00 UTC). "
-        "Defaults to January 2026."
+        "Defaults to the last 30 days if no date range is supplied."
     ),
 )
 async def get_metrics(
     from_date: Optional[str] = Query(
-        default=settings.DATA_START_DATE,
+        default=None,
         alias="from",
-        description="Start date (YYYY-MM-DD).",
-        example="2026-01-01",
+        description="Start date (YYYY-MM-DD). Defaults to 30 days ago.",
     ),
     to_date: Optional[str] = Query(
-        default=settings.DATA_END_DATE,
+        default=None,
         alias="to",
-        description="End date (YYYY-MM-DD).",
-        example="2026-01-31",
+        description="End date (YYYY-MM-DD). Defaults to today.",
     ),
 ):
+    from_date = from_date or _default_from()
+    to_date = to_date or _default_to()
+
     try:
         raw_actuals, raw_forecasts = await _fetch_both(from_date, to_date)
     except Exception as exc:

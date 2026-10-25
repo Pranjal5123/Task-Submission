@@ -5,6 +5,7 @@
  *  - Net procurement gap (actual demand proxy - wind generation)
  */
 import { useState } from 'react'
+import { defaultFrom, defaultTo } from '../utils/dateDefaults'
 import {
   ResponsiveContainer,
   LineChart,
@@ -26,8 +27,8 @@ import DateRangePicker from '../components/DateRangePicker'
 const TOTAL_DEMAND_MW = 35000 // approximate UK winter peak demand proxy
 
 export default function OverviewPage() {
-  const [from, setFrom] = useState('2026-01-01')
-  const [to, setTo] = useState('2026-01-31')
+  const [from, setFrom] = useState(defaultFrom)
+  const [to, setTo] = useState(defaultTo)
 
   const actualsQ = useActuals(from, to)
   const forecastsQ = useDayAheadForecasts(from, to)

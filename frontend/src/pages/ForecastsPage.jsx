@@ -2,6 +2,7 @@
  * Forecasts page — latest WINDFOR snapshot + day-ahead selected forecasts.
  */
 import { useState } from 'react'
+import { defaultFrom, defaultTo } from '../utils/dateDefaults'
 import {
   ResponsiveContainer,
   AreaChart,
@@ -18,8 +19,8 @@ import DateRangePicker from '../components/DateRangePicker'
 import KpiCard from '../components/KpiCard'
 
 export default function ForecastsPage() {
-  const [from, setFrom] = useState('2026-01-01')
-  const [to, setTo] = useState('2026-01-31')
+  const [from, setFrom] = useState(defaultFrom)
+  const [to, setTo] = useState(defaultTo)
 
   const latestQ = useForecasts(from, to)
   const daQ = useDayAheadForecasts(from, to)

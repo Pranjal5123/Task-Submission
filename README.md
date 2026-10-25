@@ -153,7 +153,7 @@ Frontend available at: `http://localhost:5173`
 | `GET` | `/api/v1/forecasts/day-ahead?from=&to=` | Gate-closure-aware DA forecast selection |
 | `GET` | `/api/v1/metrics?from=&to=` | MAE, RMSE, MAPE, Bias + period pairs |
 
-All endpoints default to `from=2026-01-01&to=2026-01-31` (January 2026 scope).
+All endpoints default to the **last 30 days** when no `from`/`to` parameters are supplied.
 
 Full interactive docs: `/api/docs` (Swagger UI)
 
@@ -230,7 +230,7 @@ Full interactive docs: `/api/docs` (Swagger UI)
 
 - **Actuals:** [Elexon BMRS FUELHH stream](https://data.elexon.co.uk/bmrs/api/v1/datasets/FUELHH/stream) — `fuelType=WIND`
 - **Forecasts:** [Elexon BMRS WINDFOR stream](https://data.elexon.co.uk/bmrs/api/v1/datasets/WINDFOR/stream)
-- **Scope:** January 2026 (configurable via `from` / `to` query parameters)
+- **Scope:** Last 30 days by default (fully configurable via `from` / `to` query parameters)
 
 ---
 
