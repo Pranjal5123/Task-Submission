@@ -21,12 +21,13 @@ async def health_check():
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     try:
         async with httpx.AsyncClient(timeout=5) as client:
+            # NOTE: Do NOT pass fuelType here — /datasets/FUELHH rejects it
+            # with HTTP 400. Filter to WIND is done in application code.
             resp = await client.get(
                 f"{settings.ELEXON_BASE_URL}/datasets/FUELHH",
                 params={
                     "settlementDateFrom": yesterday,
                     "settlementDateTo": yesterday,
-                    "fuelType": "WIND",
                     "format": "json",
                 },
             )

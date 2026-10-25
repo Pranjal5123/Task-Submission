@@ -1,11 +1,12 @@
 """Elexon BMRS API client with retry logic and caching.
 
 Correct parameter names (confirmed against live API):
-  FUELHH  : settlementDateFrom / settlementDateTo
+  FUELHH  : settlementDateFrom / settlementDateTo  (NO fuelType param – filter locally)
   WINDFOR : publishDateTimeFrom / publishDateTimeTo  (stream endpoint)
 
-Using the wrong names (`from` / `to`) causes the API to silently ignore the
-filter and return the most recently available data instead.
+IMPORTANT: The /datasets/FUELHH endpoint does NOT accept a `fuelType` query
+parameter. Passing it causes a 400 Bad Request. All fuel-type filtering must
+be done client-side after receiving the full response.
 """
 
 import logging
@@ -55,18 +56,8 @@ class ElexonClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    # async def _get(self, path: str, params: Dict[str, Any]) -> Any:
-    #     url = f"{self.BASE_URL}{path}"
-    #     params["format"] = "json"
-    #     logger.info("GET %s params=%s", url, params)
-    #     response = await self._get_client().get(url, params=params)
-    #     response.raise_for_status()
-    #     return response.json()
-
-
-
-    
     async def _get(self, path: str, params: Dict[str, Any]) -> Any:
+        """Make an authenticated GET request with automatic retry on transient errors."""
         url = f"{self.BASE_URL}{path}"
         params["format"] = "json"
 
@@ -91,6 +82,10 @@ class ElexonClient:
     ) -> List[Dict[str, Any]]:
         """Fetch actual wind generation half-hourly data (FUELHH).
 
+        NOTE: The /datasets/FUELHH endpoint does NOT support a `fuelType` query
+        parameter. Sending it causes a 400 Bad Request from the Elexon API.
+        We fetch all fuel types and filter to WIND locally.
+
         Correct Elexon API parameters:
           settlementDateFrom / settlementDateTo  (YYYY-MM-DD)
         """
@@ -100,19 +95,25 @@ class ElexonClient:
             logger.debug("Cache HIT for %s", cache_key)
             return cached
 
+        # Do NOT pass fuelType here — /datasets/FUELHH rejects it with HTTP 400.
+        # WIND filtering is performed below in application code.
         data = await self._get(
             "/datasets/FUELHH",
             {
                 "settlementDateFrom": from_date,
                 "settlementDateTo": to_date,
-                "fuelType": "WIND",
             },
         )
 
         # The non-stream endpoint wraps records in a `data` key
         records_raw = data if isinstance(data, list) else data.get("data", [])
 
-        # Defensive: keep only WIND records and normalise field names
+        logger.info(
+            "FUELHH: raw=%d records received (from=%s to=%s)",
+            len(records_raw), from_date, to_date,
+        )
+
+        # Filter to WIND only and normalise field names
         records = []
         for r in records_raw:
             if r.get("fuelType", "").upper() != "WIND":
@@ -124,6 +125,11 @@ class ElexonClient:
                 sd = r["settlementDate"]
                 r["startTime"] = f"{sd}T{minutes // 60:02d}:{minutes % 60:02d}:00Z"
             records.append(r)
+
+        logger.info(
+            "FUELHH: %d WIND records after filtering (from=%s to=%s)",
+            len(records), from_date, to_date,
+        )
 
         await cache_manager.set(cache_key, records, ttl=settings.CACHE_TTL_SECONDS)
         return records

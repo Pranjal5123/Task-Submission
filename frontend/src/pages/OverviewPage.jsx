@@ -70,10 +70,11 @@ export default function OverviewPage() {
         <div className="info-banner">
           <Zap size={16} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
-            <strong>Day-ahead procurement context:</strong> For each delivery half-hour in January 2026,
-            the chart shows the wind generation forecast available before gate closure (D-1 11:00 UTC)
-            alongside the actual generation recorded by Elexon BMRS. The gap between total demand and
-            wind generation indicates the thermal/import procurement volume required.
+            <strong>Day-ahead procurement context:</strong> For each delivery half-hour in the
+            selected range ({fmtRange(from, to)}), the chart shows the wind generation forecast
+            available before gate closure (D-1 11:00 UTC) alongside the actual generation recorded
+            by Elexon BMRS. The gap between total demand and wind generation indicates the
+            thermal/import procurement volume required.
           </span>
         </div>
 

@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _validate_date(value: str, field_name: str) -> str:
+    """Validate YYYY-MM-DD format; raises HTTP 422 on failure."""
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {field_name} '{value}': must be YYYY-MM-DD format.",
+        )
+    return value
+
+
 def _default_from() -> str:
     return (date.today() - timedelta(days=30)).isoformat()
 
@@ -50,6 +62,22 @@ async def get_forecasts(
 ):
     from_date = from_date or _default_from()
     to_date = to_date or _default_to()
+
+    _validate_date(from_date, "from")
+    _validate_date(to_date, "to")
+
+    # WINDFOR forecasts: clamp to today+1 to capture day-ahead vintages
+    today_str = date.today().isoformat()
+    if from_date > today_str:
+        from_date = today_str
+    if to_date > today_str:
+        to_date = today_str
+
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=422,
+            detail=f"from ({from_date}) must not be after to ({to_date}).",
+        )
 
     try:
         raw = await elexon_client.get_wind_forecasts(from_date, to_date)
@@ -93,6 +121,21 @@ async def get_day_ahead_forecasts(
 ):
     from_date = from_date or _default_from()
     to_date = to_date or _default_to()
+
+    _validate_date(from_date, "from")
+    _validate_date(to_date, "to")
+
+    today_str = date.today().isoformat()
+    if from_date > today_str:
+        from_date = today_str
+    if to_date > today_str:
+        to_date = today_str
+
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=422,
+            detail=f"from ({from_date}) must not be after to ({to_date}).",
+        )
 
     try:
         raw = await elexon_client.get_wind_forecasts(from_date, to_date)

@@ -13,6 +13,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _validate_date(value: str, field_name: str) -> str:
+    """Validate that a string is a valid YYYY-MM-DD date. Raises HTTPException on failure."""
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {field_name} '{value}': must be YYYY-MM-DD format.",
+        )
+    return value
+
+
 def _default_from() -> str:
     """30 days ago as YYYY-MM-DD — computed fresh per request."""
     return (date.today() - timedelta(days=30)).isoformat()
@@ -50,6 +62,23 @@ async def get_actuals(
     # Apply dynamic defaults if caller omits dates
     from_date = from_date or _default_from()
     to_date = to_date or _default_to()
+
+    # Validate date format (returns 422 with a clear message on bad input)
+    _validate_date(from_date, "from")
+    _validate_date(to_date, "to")
+
+    # Clamp to_date to today — Elexon FUELHH returns 400 for future settlement dates
+    today_str = date.today().isoformat()
+    if to_date > today_str:
+        logger.info("to_date %s is in the future; clamping to today (%s)", to_date, today_str)
+        to_date = today_str
+
+    # Guard against inverted range
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=422,
+            detail=f"from ({from_date}) must not be after to ({to_date}).",
+        )
 
     try:
         raw = await elexon_client.get_wind_actuals(from_date, to_date)

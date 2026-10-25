@@ -5,7 +5,10 @@ const BASE_URL = `${import.meta.env.VITE_API_URL || 'https://task-submission-api
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 90000,
+  // Backend has HTTP_TIMEOUT=60s with up to 3 retries (~180s worst-case).
+  // Set frontend timeout generously so we see the backend error, not a
+  // premature client-side timeout that produces an unhelpful network error.
+  timeout: 120000,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -13,10 +16,10 @@ const api = axios.create({
 api.interceptors.response.use(
   (res) => res.data,
   (err) => {
-    const message =
-      err.response?.data?.detail ||
-      err.message ||
-      'An unexpected error occurred'
+    const detail = err.response?.data?.detail
+    const message = typeof detail === 'string'
+      ? detail
+      : err.message || 'An unexpected error occurred'
     return Promise.reject(new Error(message))
   }
 )
