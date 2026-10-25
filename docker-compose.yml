@@ -1,0 +1,50 @@
+# Wind Power Intelligence Platform — docker-compose
+# Runs backend (FastAPI) and frontend (React via nginx) together.
+# Usage:
+#   docker compose up --build          # start everything
+#   docker compose up -d               # detached mode
+#   docker compose down                # teardown
+
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: windiq-backend
+    restart: unless-stopped
+    environment:
+      - CACHE_TTL_SECONDS=300
+      - CORS_ORIGINS=["http://localhost:80","http://localhost","http://frontend"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - windiq-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Backend API is accessed through the nginx proxy at /api
+        VITE_API_URL: /api/v1
+    container_name: windiq-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - windiq-net
+
+networks:
+  windiq-net:
+    driver: bridge
