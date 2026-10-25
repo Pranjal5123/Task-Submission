@@ -77,9 +77,98 @@ class ElexonClient:
         return response.json()
 
 
+    # async def get_wind_actuals(
+    #     self, from_date: str, to_date: str
+    # ) -> List[Dict[str, Any]]:
+
+
     async def get_wind_actuals(
         self, from_date: str, to_date: str
     ) -> List[Dict[str, Any]]:
+        """Fetch actual wind generation in chunks of at most 7 days."""
+
+        cache_key = f"actuals:{from_date}:{to_date}"
+        cached = await cache_manager.get(cache_key)
+
+        if cached is not None:
+            logger.debug("Cache HIT for %s", cache_key)
+            return cached
+
+        start_date = date.fromisoformat(from_date)
+        end_date = date.fromisoformat(to_date)
+
+        if start_date > end_date:
+            raise ValueError("Start date must not be after end date")
+
+        records = []
+        current_date = start_date
+
+        while current_date <= end_date:
+            # FUELHH allows a maximum inclusive range of 7 days.
+            chunk_end = min(
+                current_date + timedelta(days=6),
+                end_date,
+            )
+
+            logger.info(
+                "Fetching FUELHH actuals: %s to %s",
+                current_date.isoformat(),
+                chunk_end.isoformat(),
+            )
+
+            data = await self._get(
+                "/datasets/FUELHH",
+                {
+                    "settlementDateFrom": current_date.isoformat(),
+                    "settlementDateTo": chunk_end.isoformat(),
+                },
+            )
+
+            records_raw = (
+                data if isinstance(data, list)
+                else data.get("data", [])
+            )
+
+            for r in records_raw:
+                if r.get("fuelType", "").upper() != "WIND":
+                    continue
+
+                if "startTime" not in r and "settlementDate" in r:
+                    period = int(r.get("settlementPeriod", 1))
+                    minutes = (period - 1) * 30
+                    sd = r["settlementDate"]
+
+                    r["startTime"] = (
+                        f"{sd}T{minutes // 60:02d}:"
+                        f"{minutes % 60:02d}:00Z"
+                    )
+
+                records.append(r)
+
+            # Continue from the next day without overlapping requests.
+            current_date = chunk_end + timedelta(days=1)
+
+        # Sort all chunks together by delivery time.
+        records.sort(key=lambda r: r.get("startTime", ""))
+
+        logger.info(
+            "FUELHH complete: %d wind records from %s to %s",
+            len(records),
+            from_date,
+            to_date,
+        )
+
+        await cache_manager.set(
+            cache_key,
+            records,
+            ttl=settings.CACHE_TTL_SECONDS,
+        )
+
+        return records
+
+
+
+
         """Fetch actual wind generation half-hourly data (FUELHH).
 
         NOTE: The /datasets/FUELHH endpoint does NOT support a `fuelType` query
